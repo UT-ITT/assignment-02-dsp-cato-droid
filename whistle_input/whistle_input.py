@@ -1,8 +1,10 @@
 import sounddevice as sd
 import numpy as np
-import pyqtgraph as pg
 import scipy.fftpack
-import pygame
+from pynput.keyboard import Key, Controller
+
+#setup for keyboard presses later
+keyboard = Controller()
 
 # Set up audio stream
 # reduce chunk size and sampling rate for lower latency
@@ -15,10 +17,11 @@ CHANNELS = 1 # Mono audio
 WINDOW_SIZE = 4410 # window size of the DFT in samples #FIXME 0 weg gemacht, damit es schneller geht
 windowSamples = [0 for _ in range(WINDOW_SIZE)]
 
-#frequency buffers
-history = 200  # number of points on screen
-
-input_freqs = [0] * history
+#count up and down movement in frequencies
+last_input_freq = 0
+up_counter = 0
+down_counter = 0
+pause_counter = 0
 
 # print info about audio devices
 print("Available input devices:\n")
@@ -61,25 +64,42 @@ def get_input_freq(indata):
 
 # audio callback to safe data
 def audio_callback(indata, frames, time, status):
-    global input_freqs, target_freqs, target_freq, score_hits, score_total
+    global last_input_freq, history, up_counter, down_counter, pause_counter
     if status:
         print(status)
 
     input_freq = get_input_freq(indata)
 
-    if input_freq is not None:
-        input_freqs.append(input_freq)
-    else:
-        input_freqs.append(0)
-
     #FIXME testing, remove later
-    print(f"input frequency: {input_freq:.1f} Hz")
-    print(f"input frequencies: {input_freqs}")
+    #print(f"input frequency: {input_freq:.1f} Hz")
+    #print(f"last/current input frequency: {last_input_freq}/{input_freq}: ")
+    if last_input_freq < input_freq:
+        up_counter += 1
+        pause_counter = 0
+        if up_counter == 10: #may need to be adjusted if whistle is significantly longer/shorter than in my test
+            keyboard.press(Key.up)
+            keyboard.release(Key.up)
+            up_counter = 0
+    elif last_input_freq > input_freq:
+        down_counter += 1
+        pause_counter = 0
+        if down_counter == 10:#may need to be adjusted if whistle is significantly longer/shorter than in my test
+            keyboard.press(Key.down)
+            keyboard.release(Key.down)
+            down_counter = 0
+    elif last_input_freq == input_freq: #reset up and down counters on pause to stop false triggers/noise
+        pause_counter += 1
+        if pause_counter == 5:
+            up_counter = 0
+            down_counter = 0
+            pause_counter = 0
 
-    #FIXME check if at least 5 (or more?) frequency entries in list are going up/down and trigger event
+    if input_freq is not None:
+        last_input_freq = input_freq
+    else:
+        last_input_freq = 0
 
-
-# open audio input stream
+#open audio input stream
 stream = sd.InputStream(
     device=input_device,
     channels=CHANNELS,
@@ -89,7 +109,7 @@ stream = sd.InputStream(
     latency='low'
 )
 
-# continously capture and print audio signal
+#continously capture audio signal
 try:
     with stream:
         print("Press Ctrl+C to stop")
