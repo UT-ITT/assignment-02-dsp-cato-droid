@@ -5,6 +5,7 @@ import scipy.fftpack
 import threading
 import mido
 from mido import MidiFile
+import pygame
 
 #freq from midi
 target_freq = None
@@ -51,7 +52,7 @@ input_device = int(input("\nSelect input device: "))
 # set up interactive plot
 app = pg.mkQApp("Audio Visualizer")
 
-win = pg.GraphicsLayoutWidget(title="Live Audio")
+win = pg.GraphicsLayoutWidget(title="Karaoke Game")
 plot = win.addPlot()
 plot.setYRange(0, 1000)
 
@@ -59,6 +60,11 @@ input_curve = plot.plot(pen='b', name="input")
 target_curve = plot.plot(pen='r', name="target")
 
 win.show()
+
+#play midi out loud
+pygame.mixer.init()
+pygame.mixer.music.load("Alle_Meine_Entchen.mid")
+pygame.mixer.music.play()
 
 #convert frequency to midi note
 def freq_to_midi(freq):
@@ -81,14 +87,6 @@ def midi_player():
             target_freq = freq
     end = True
 
-#calculate moving average over input pitch to smooth out the curve
-pitch_history = []
-def smooth_pitch(freq):
-    pitch_history.append(freq)
-    if len(pitch_history) > 5:
-        pitch_history.pop(0)
-    return np.mean(pitch_history)
-
 #extract the main input (singig) frequency
 def get_input_freq(indata):
     #some code here adjusted from guitar tuner example: 
@@ -107,7 +105,7 @@ def get_input_freq(indata):
         maxInd = np.argmax(magnitudeSpec)
         maxFreq = maxInd * (RATE/WINDOW_SIZE)
 
-        return(smooth_pitch(maxFreq))
+        return(maxFreq)
         print(f"Main Frequency: {maxFreq:.1f}")
     else:
         print('no input')
@@ -141,19 +139,15 @@ def audio_callback(indata, frames, time, status):
         if target_note is not None and input_note is not None:
             score_total += 1
 
-            if abs(target_note - input_note) < 1:
+            if abs(target_note - input_note) < 10:
                 score_hits += 1
 
-        diff = input_freq - target_freq
+        # diff = input_freq - target_freq
         
-        print(f"Target: {target_freq:.1f} Hz | "
-              f"You: {input_freq:.1f} Hz | "
-              f"Diff: {diff:.1f} Hz")
+        # print(f"Target: {target_freq:.1f} Hz | "
+        #       f"You: {input_freq:.1f} Hz | "
+        #       f"Diff: {diff:.1f} Hz")
 
-
-
-    #data = indata[:, 0]  # mono
-    #curve.setData(data)
 
 def update_plot():
     input_curve.setData(input_freqs)
@@ -171,7 +165,7 @@ def update_plot():
 
 timer = pg.QtCore.QTimer()
 timer.timeout.connect(update_plot)
-timer.start(10)  #ca. 10 FPS
+timer.start(30)  #ca. 30 FPS update rate
 
 
 # open audio input stream
@@ -191,11 +185,3 @@ threading.Thread(target=midi_player, daemon=True).start()
 # continously capture and plot audio signal
 with stream:
     pg.exec()
-
-#TODO
-'''
--detect when frequencies match
--count some score
--fix x axis scaling
-stop when midi ends
-'''
